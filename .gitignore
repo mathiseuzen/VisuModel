@@ -6,4 +6,6 @@ archive/
 datasets/
 *.pt
 model_patches/
-space_build/
+runs/
+*.onnx
+yolo_dataset.zip

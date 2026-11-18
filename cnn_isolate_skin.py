@@ -1,6 +1,6 @@
 """Isole la peau du visage sur chaque photo d'une capture.
 
-Usage : python isolate_skin.py [dossier_de_capture]     (par défaut : la dernière capture)
+Usage : python cnn_isolate_skin.py [dossier_de_capture]     (par défaut : la dernière capture)
 
 Pour chaque photo, écrit captures/<session>/peau/<nom>.png : une image recadrée où tout ce qui
 n'est pas de la peau (fond, cheveux, sourcils, yeux, lèvres) est transparent ET vidé (pixels à 0).

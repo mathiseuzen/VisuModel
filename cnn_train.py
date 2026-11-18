@@ -1,6 +1,6 @@
 """Entraîne un CNN écrit de zéro (PyTorch) à classer les imagettes 64x64 : 6 types de boutons + peau saine.
 
-Usage : python train_patch_cnn.py [--data datasets/patches] [--epochs 30] [--out model_patches.pt]
+Usage : python cnn_train.py [--data datasets/patches] [--epochs 30] [--out cnn_model.pt]
 
 Tourne à l'identique sur processeur, sur GPU, et sur Kaggle (utilise le GPU s'il existe).
 Le meilleur modèle est choisi sur la validation (F1 moyen des classes), puis mesuré UNE fois sur le test.
@@ -68,7 +68,7 @@ def main():
     ap.add_argument("--batch", type=int, default=128)
     ap.add_argument("--lr", type=float, default=2e-3)
     ap.add_argument("--workers", type=int, default=0)
-    ap.add_argument("--out", default="model_patches.pt")
+    ap.add_argument("--out", default="cnn_model.pt")
     args = ap.parse_args()
 
     torch.manual_seed(0)

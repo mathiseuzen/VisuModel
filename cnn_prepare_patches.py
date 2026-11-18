@@ -1,6 +1,6 @@
 """Prépare les imagettes (patches) pour entraîner le classifieur à partir d'un jeu de données YOLO.
 
-Usage : python prepare_patches.py [--src archive] [--out datasets/patches]
+Usage : python cnn_prepare_patches.py [--src archive] [--out datasets/patches]
 
 Pour chaque image du jeu de données :
   - chaque boîte devient une imagette 64x64 (carré centré sur la boîte, avec du contexte autour),

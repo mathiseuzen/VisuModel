@@ -1,7 +1,7 @@
 """Détection des boutons : fenêtre glissante sur la peau isolée + classifieur.
 
 En ligne de commande (teste le modèle sur les photos d'une capture) :
-    python detect.py [dossier_de_capture] [--scale 0.12] [--conf 0.7] [--model model_patches.pt]
+    python cnn_detect.py [dossier_de_capture] [--scale 0.12] [--conf 0.7] [--model cnn_model.pt]
 Résultat : captures/<session>/detections/<photo>.jpg (recadré sur le visage, boîtes dessinées).
 
 Principe : on isole la peau (comme à l'étape 2), on fait glisser une fenêtre carrée qui doit être
@@ -18,9 +18,9 @@ import cv2
 import numpy as np
 import torch
 
-from isolate_skin import make_models, skin_mask
-from prepare_patches import HEALTHY, MIN_SIDE, crop_square
-from train_patch_cnn import PatchCNN
+from cnn_isolate_skin import make_models, skin_mask
+from cnn_prepare_patches import HEALTHY, MIN_SIDE, crop_square
+from cnn_train import PatchCNN
 
 # BGR
 COLORS = {
@@ -66,13 +66,13 @@ def classify(model, crops):
     x = np.stack(crops)[..., ::-1].astype(np.float32) / 255.0  # BGR -> RGB comme à l'entraînement
     x = torch.from_numpy(((x - 0.5) / 0.5).copy()).permute(0, 3, 1, 2)
     out = []
-    with torch.no_grad():
+    with torch.inference_mode():
         for i in range(0, len(x), 256):
             out.append(torch.softmax(model(x[i:i + 256]), 1).numpy())
     return np.concatenate(out)
 
 
-def load_model(path="model_patches.pt"):
+def load_model(path="cnn_model.pt"):
     """(réseau prêt à l'emploi, noms des classes). Chargement sécurisé : poids uniquement."""
     ck = torch.load(path, weights_only=True, map_location="cpu")
     model = PatchCNN(len(ck["classes"]))
@@ -80,7 +80,7 @@ def load_model(path="model_patches.pt"):
     return model.eval(), ck["classes"]
 
 
-def find_lesions(bgr, landmarker, segmenter, model, classes, scale=0.12, conf=0.7):
+def find_lesions(bgr, landmarker, segmenter, model, classes, scale=0.12, conf=0.7, stride=0.5):
     """Analyse une photo BGR. Renvoie None si aucun visage, sinon (infos, détections).
 
     détections : liste de (x0, y0, x1, y1, classe, confiance), en pixels de la photo.
@@ -92,7 +92,7 @@ def find_lesions(bgr, landmarker, segmenter, model, classes, scale=0.12, conf=0.
     face_w = int(pts[:, 0].max() - pts[:, 0].min())
     face_h = int(pts[:, 1].max() - pts[:, 1].min())
     win = max(MIN_SIDE, round(scale * face_w))
-    positions = skin_windows(mask, win, max(1, win // 2))
+    positions = skin_windows(mask, win, max(1, int(win * stride)))
     info = {"pts": pts, "face_w": face_w, "face_h": face_h, "win": win, "n_windows": len(positions), "lesion_rate": 0.0}
     if not positions:
         return info, []
@@ -112,7 +112,7 @@ def main():
     ap.add_argument("folder", nargs="?")
     ap.add_argument("--scale", type=float, default=0.12)
     ap.add_argument("--conf", type=float, default=0.7)
-    ap.add_argument("--model", default="model_patches.pt")
+    ap.add_argument("--model", default="cnn_model.pt")
     args = ap.parse_args()
 
     folder = args.folder

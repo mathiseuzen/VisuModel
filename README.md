@@ -1,145 +1,45 @@
 # VisuModel
 
-Un modèle qui détecte les imperfections du visage (boutons, rougeurs, etc.) à partir de photos.
+Détecte les boutons du visage avec une caméra (webcam du PC ou iPhone via Camo Studio). Deux modèles au choix.
 
-## Étapes du projet
-
-1. **Capture guidée** (fait) : la caméra photographie le visage sous plusieurs angles pour constituer un panel.
-2. **Isoler la peau** (fait) : ne garder que la peau, sans fond, cheveux, sourcils, yeux ni lèvres.
-3. **Découper en zones** (fait) : front, nez, joues, menton, en rectangles 100 % remplis de peau, en RGB simple (sans alpha).
-4. **Préparer les imagettes** (fait) : petits carrés 64×64 de boutons et de peau saine, découpés dans un jeu de données YOLO.
-5. **Entraîner le classifieur** (en cours, sur Kaggle) : un CNN écrit de zéro qui reconnaît 6 types de boutons + peau saine.
-6. **Détecter sur vos photos** (fait) : une fenêtre glissante parcourt la peau isolée et le classifieur dit ce qu'il voit.
-7. **Appli en ligne** (en cours) : un Space Hugging Face où l'on prend un selfie avec son téléphone et où les boutons sont entourés.
-
-## Étape 1 : la capture
+## Installation
 
 ```bash
 python -m venv .venv
 .venv\Scripts\activate
 pip install -r requirements.txt
-
-python capture.py
 ```
 
-1. Placez votre visage dans l'ovale (il passe au vert quand tout est bon).
-2. L'écran indique la pose à prendre : face, menton levé, tête baissée, côté gauche, côté droit.
-3. Tenez la pose 1 seconde : la photo part toute seule.
-
-Touches : `ESPACE` prend la photo tout de suite, `q` quitte.
-
-Les photos sont enregistrées **sans aucun dessin dessus** dans `captures/<date_heure>/`, en pleine résolution (jusqu'à 1280×720).
-
-## Étape 2 : isoler la peau
+## Utilisation
 
 ```bash
-python isolate_skin.py                      # dernière capture
-python isolate_skin.py captures/<session>   # ou une capture précise
+python cnn_photo.py --live --cam 1     # réseau de neurones maison (cnn_model.pt), temps réel
+python yolo_photo.py --live --cam 1    # modèle YOLO (yolo_model.pt), temps réel
 ```
 
-Pour chaque photo, écrit `captures/<session>/peau/<nom>.png` : l'image recadrée sur la peau, où tout le reste est transparent **et vidé** (pixels à 0).
+Les deux scripts ont les mêmes options :
+- `--cam N` : numéro de la caméra (0 = webcam du PC, 1 = souvent Camo / iPhone).
+- `--live` : temps réel ; `+` / `-` règlent le seuil de confiance, `q` quitte.
+- sans `--live` : ESPACE prend une photo ; `python cnn_photo.py image.jpg` analyse un fichier. Résultat dans `resultat.jpg`.
 
-Le masque de peau est l'intersection de deux sources :
-- l'ovale du visage (points MediaPipe, prolongé de 30 % vers le haut car le maillage s'arrête au milieu du front), moins les yeux, les sourcils et les lèvres ;
-- la classe « peau du visage » d'un modèle de segmentation (`selfie_multiclass.tflite`), qui retire cheveux, barbe et fond.
+## Nommage des fichiers
 
-Le masque est ensuite érodé de ~2 % de la largeur du visage pour ne garder aucun pixel de bordure.
-
-## Étape 3 : découper en zones
-
-```bash
-python zones.py                      # dernière capture
-python zones.py captures/<session>   # ou une capture précise
-```
-
-Zones : `front`, `nez`, `joue_gauche`, `joue_droite`, `menton` (gauche/droite = côté de la personne : sur la photo, la joue gauche est à droite de l'image).
-
-Pour chaque zone, le script cherche le **plus grand rectangle sans aucun pixel hors peau** (ni yeux, sourcils, lèvres, cheveux, fond). Un contrôle interne vérifie qu'il n'y a aucun pixel vide dans chaque rectangle.
-
-Résultat dans `captures/<session>/zones/` :
-- `<photo>/<zone>.png` : image RGB ordinaire, sans canal alpha, de taille variable selon la zone ;
-- `<photo>_apercu.jpg` : la photo avec les rectangles dessinés, pour vérifier le placement.
-
-Une zone dont un côté fait moins de 32 px est ignorée (cas courant du côté caché sur les poses de profil).
-
-## Étape 4 : préparer les imagettes
-
-Source : un jeu de données au format YOLO (dossiers `train/`, `valid/`, `test/` avec `images/` et `labels/`, plus `data.yaml`) placé dans `archive/` (exclu de Git).
-
-```bash
-python prepare_patches.py                  # écrit datasets/patches/<split>/<classe>/*.png
-```
-
-- Chaque boîte devient une imagette 64×64 : un carré centré sur la boîte, de côté 2× la boîte, pour garder du contexte.
-- Autant d'imagettes de **peau saine** sont tirées au hasard, uniquement sur de la peau (modèle de segmentation) et sans toucher aucune boîte.
-- Le découpage train / valid / test du jeu de données est conservé tel quel.
-- Les boîtes de moins de 6 px sont ignorées.
-
-## Étape 5 : entraîner le classifieur
-
-`train_patch_cnn.py` entraîne un CNN de 288 000 paramètres, écrit de zéro avec PyTorch. Il pondère les classes rares, applique des retournements, rotations de 90° et variations de luminosité, choisit le meilleur modèle sur la validation puis le mesure une seule fois sur le test (précision, rappel, F1 par classe et matrice de confusion).
-
-Sur un processeur, une époque prend environ 150 s : on entraîne donc sur Kaggle (GPU gratuit).
-
-1. Zippez `datasets/patches` et envoyez l'archive sur Kaggle (**Datasets → New Dataset**), en privé.
-2. Importez `kaggle_train.ipynb` (**File → Import Notebook**), ajoutez ce dataset en entrée, activez le **GPU** et **Internet**.
-3. **Run All** : le modèle `model_patches.pt` est dans l'onglet **Output**.
-
-En local : `python train_patch_cnn.py --epochs 30`.
-
-## Résultats du classifieur (jeu de test)
-
-| Mesure | Valeur |
-|---|---|
-| Précision globale (7 classes) | 72,8 % (référence « toujours peau saine » : 48,4 %) |
-| F1 moyen | 0,49 |
-| Bouton ou peau saine | 88 % des boutons trouvés, 91 % de précision |
-| Par famille (comédons, inflammatoires, taches, saine) | précision 77 %, F1 moyen 0,70 |
-| Confiance supérieure à 90 % | juste dans 94 % des cas |
-
-Le réseau trouve bien les boutons mais confond souvent leur type : `blackheads` (F1 0,14) et `nodules` (0,16) sont mal reconnus. Ces chiffres viennent de photos du jeu de données, pas de photos de webcam ou de téléphone.
-
-## Étape 6 : détecter
-
-```bash
-python detect.py                      # dernière capture, modèle model_patches.pt
-python detect.py --conf 0.5 --scale 0.10
-```
-
-Une fenêtre carrée (`--scale` = fraction de la largeur du visage) doit être entièrement sur de la peau ; elle est découpée comme à l'entraînement puis classée. Les boutons dont la confiance dépasse `--conf` sont encadrés, les fenêtres qui se chevauchent fusionnées. Images dans `captures/<session>/detections/`.
-
-## Étape 7 : l'appli (Hugging Face Space)
-
-```bash
-python app.py            # appli Gradio en local
-python make_space.py     # prépare space_build/ à envoyer sur Hugging Face
-```
-
-L'appli (`app.py`) prend un selfie (appareil photo du téléphone ou envoi d'un fichier), vérifie que le visage remplit la photo, puis entoure les boutons avec leur type et leur confiance. Les photos sont supprimées du serveur au bout de 10 minutes.
-
-`make_space.py` crée `space_build/` avec l'appli, les modules, les modèles et les fichiers de configuration du Space. Ce dossier est exclu de Git car il contient les poids du modèle (`model_patches.pt`), dont la provenance des données d'entraînement n'est pas confirmée.
-
-## Vie privée
-
-Le dossier `captures/` est exclu de Git (`.gitignore`) : vos photos ne sont jamais envoyées sur GitHub.
-
-## Fichiers
+Préfixe = modèle : `cnn_*` (réseau maison), `yolo_*` (YOLO). Sans préfixe : ressources partagées.
 
 | Fichier | Rôle |
 |---|---|
-| `capture.py` | Capture guidée du visage |
-| `face_landmarker.task` | Modèle MediaPipe de détection du visage, utilisé pour centrer le visage et reconnaître la pose |
-| `test_capture.py` | Tests de la logique de cadrage et de pose (`python -m unittest test_capture -v`) |
-| `isolate_skin.py` | Isolation de la peau sur chaque photo |
-| `selfie_multiclass.tflite` | Modèle MediaPipe de segmentation (fond, cheveux, peau, vêtements) |
-| `test_isolate_skin.py` | Tests du recadrage et du vidage des pixels hors peau |
-| `zones.py` | Découpe de la peau en rectangles pleins par zone du visage |
-| `test_zones.py` | Tests de la recherche du plus grand rectangle plein (comparé à une recherche exhaustive) |
-| `prepare_patches.py` | Découpe des imagettes (boutons + peau saine) d'un jeu de données YOLO |
-| `train_patch_cnn.py` | CNN de zéro : entraînement, évaluation, enregistrement du modèle |
-| `kaggle_train.ipynb` | Notebook prêt à importer sur Kaggle pour entraîner sur GPU |
-| `test_prepare_patches.py`, `test_train_patch_cnn.py` | Tests de ces deux scripts |
-| `detect.py` | Fenêtre glissante + classifieur : repère les boutons sur une photo |
-| `app.py` | Appli Gradio (selfie → boutons entourés) |
-| `make_space.py` | Prépare le dossier à envoyer sur Hugging Face |
-| `test_detect.py` | Tests de la fenêtre glissante et de la fusion des boîtes |
+| `cnn_photo.py` | Photo ou temps réel avec le CNN |
+| `cnn_detect.py` | Fenêtre glissante + classifieur : repère les boutons sur une image |
+| `cnn_isolate_skin.py` | Isolation de la peau (MediaPipe) |
+| `cnn_prepare_patches.py` | Découpe des imagettes du jeu de données YOLO |
+| `cnn_train.py` | Entraînement et évaluation du `PatchCNN` |
+| `cnn_model.pt` | Poids du CNN (6 types de boutons + peau saine) |
+| `yolo_photo.py` | Photo ou temps réel avec YOLO |
+| `yolo_train_kaggle.ipynb` | Entraînement YOLO sur Kaggle ; télécharger `yolo_model.pt` depuis l'Output |
+| `yolo_model.pt` | Poids YOLO |
+| `face_landmarker.task`, `selfie_multiclass.tflite` | Modèles MediaPipe (visage, segmentation de la peau) |
+| `archive/` | Jeu de données de boutons au format YOLO (train / valid / test) |
+
+## Avertissement
+
+Outil expérimental : il ne pose aucun diagnostic et ne remplace pas l'avis d'un médecin. L'origine des données d'entraînement n'est pas confirmée.
