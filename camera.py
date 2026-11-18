@@ -13,7 +13,9 @@ def main():
             ok, frame = cap.read()
             if not ok:
                 break
-            cv2.imshow("Caméra", frame)
+            gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+            blurred = cv2.GaussianBlur(gray, (7, 7), 0)
+            cv2.imshow("Caméra", blurred)
             if cv2.waitKey(1) & 0xFF == ord("q"):
                 break
     finally:
