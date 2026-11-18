@@ -6,3 +6,4 @@ archive/
 datasets/
 *.pt
 model_patches/
+space_build/

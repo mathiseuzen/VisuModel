@@ -88,6 +88,15 @@ def to_rgba(bgr, mask):
     return rgba[ys.min():ys.max() + 1, xs.min():xs.max() + 1]
 
 
+def make_models():
+    """(détecteur de points du visage, segmenteur de peau) prêts à l'emploi ; à fermer avec .close()."""
+    landmarker = vision.FaceLandmarker.create_from_options(vision.FaceLandmarkerOptions(
+        base_options=mp_python.BaseOptions(model_asset_path=FACE_MODEL), num_faces=1))
+    segmenter = vision.ImageSegmenter.create_from_options(vision.ImageSegmenterOptions(
+        base_options=mp_python.BaseOptions(model_asset_path=SEG_MODEL), output_category_mask=True))
+    return landmarker, segmenter
+
+
 def main():
     if len(sys.argv) > 1:
         folder = sys.argv[1]
@@ -103,10 +112,7 @@ def main():
     out_dir = os.path.join(folder, "peau")
     os.makedirs(out_dir, exist_ok=True)
 
-    landmarker = vision.FaceLandmarker.create_from_options(vision.FaceLandmarkerOptions(
-        base_options=mp_python.BaseOptions(model_asset_path=FACE_MODEL), num_faces=1))
-    segmenter = vision.ImageSegmenter.create_from_options(vision.ImageSegmenterOptions(
-        base_options=mp_python.BaseOptions(model_asset_path=SEG_MODEL), output_category_mask=True))
+    landmarker, segmenter = make_models()
 
     try:
         for path in photos:

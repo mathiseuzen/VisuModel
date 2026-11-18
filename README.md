@@ -9,7 +9,8 @@ Un modèle qui détecte les imperfections du visage (boutons, rougeurs, etc.) à
 3. **Découper en zones** (fait) : front, nez, joues, menton, en rectangles 100 % remplis de peau, en RGB simple (sans alpha).
 4. **Préparer les imagettes** (fait) : petits carrés 64×64 de boutons et de peau saine, découpés dans un jeu de données YOLO.
 5. **Entraîner le classifieur** (en cours, sur Kaggle) : un CNN écrit de zéro qui reconnaît 6 types de boutons + peau saine.
-6. **Détecter sur vos photos** : une fenêtre glissante parcourt les zones de peau et le classifieur dit ce qu'il voit.
+6. **Détecter sur vos photos** (fait) : une fenêtre glissante parcourt la peau isolée et le classifieur dit ce qu'il voit.
+7. **Appli en ligne** (en cours) : un Space Hugging Face où l'on prend un selfie avec son téléphone et où les boutons sont entourés.
 
 ## Étape 1 : la capture
 
@@ -86,6 +87,38 @@ Sur un processeur, une époque prend environ 150 s : on entraîne donc sur Kaggl
 
 En local : `python train_patch_cnn.py --epochs 30`.
 
+## Résultats du classifieur (jeu de test)
+
+| Mesure | Valeur |
+|---|---|
+| Précision globale (7 classes) | 72,8 % (référence « toujours peau saine » : 48,4 %) |
+| F1 moyen | 0,49 |
+| Bouton ou peau saine | 88 % des boutons trouvés, 91 % de précision |
+| Par famille (comédons, inflammatoires, taches, saine) | précision 77 %, F1 moyen 0,70 |
+| Confiance supérieure à 90 % | juste dans 94 % des cas |
+
+Le réseau trouve bien les boutons mais confond souvent leur type : `blackheads` (F1 0,14) et `nodules` (0,16) sont mal reconnus. Ces chiffres viennent de photos du jeu de données, pas de photos de webcam ou de téléphone.
+
+## Étape 6 : détecter
+
+```bash
+python detect.py                      # dernière capture, modèle model_patches.pt
+python detect.py --conf 0.5 --scale 0.10
+```
+
+Une fenêtre carrée (`--scale` = fraction de la largeur du visage) doit être entièrement sur de la peau ; elle est découpée comme à l'entraînement puis classée. Les boutons dont la confiance dépasse `--conf` sont encadrés, les fenêtres qui se chevauchent fusionnées. Images dans `captures/<session>/detections/`.
+
+## Étape 7 : l'appli (Hugging Face Space)
+
+```bash
+python app.py            # appli Gradio en local
+python make_space.py     # prépare space_build/ à envoyer sur Hugging Face
+```
+
+L'appli (`app.py`) prend un selfie (appareil photo du téléphone ou envoi d'un fichier), vérifie que le visage remplit la photo, puis entoure les boutons avec leur type et leur confiance. Les photos sont supprimées du serveur au bout de 10 minutes.
+
+`make_space.py` crée `space_build/` avec l'appli, les modules, les modèles et les fichiers de configuration du Space. Ce dossier est exclu de Git car il contient les poids du modèle (`model_patches.pt`), dont la provenance des données d'entraînement n'est pas confirmée.
+
 ## Vie privée
 
 Le dossier `captures/` est exclu de Git (`.gitignore`) : vos photos ne sont jamais envoyées sur GitHub.
@@ -106,3 +139,7 @@ Le dossier `captures/` est exclu de Git (`.gitignore`) : vos photos ne sont jama
 | `train_patch_cnn.py` | CNN de zéro : entraînement, évaluation, enregistrement du modèle |
 | `kaggle_train.ipynb` | Notebook prêt à importer sur Kaggle pour entraîner sur GPU |
 | `test_prepare_patches.py`, `test_train_patch_cnn.py` | Tests de ces deux scripts |
+| `detect.py` | Fenêtre glissante + classifieur : repère les boutons sur une photo |
+| `app.py` | Appli Gradio (selfie → boutons entourés) |
+| `make_space.py` | Prépare le dossier à envoyer sur Hugging Face |
+| `test_detect.py` | Tests de la fenêtre glissante et de la fusion des boîtes |
