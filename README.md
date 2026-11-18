@@ -22,7 +22,7 @@ Un réseau de neurones écrit **de zéro** en Python pur, capable de repérer de
 Prérequis : Python 3.8 ou plus récent.
 
 ```bash
-git clone https://github.com/matzer667/VisuModel.git
+git clone https://github.com/mathiseuzen/VisuModel.git
 cd VisuModel
 
 python demo_detection.py      # entraîne le réseau et affiche la précision
