@@ -1,10 +1,10 @@
-"""Détection des boutons en temps réel avec le modèle YOLO entraîné (train_yolo.py).
+"""Détection des imperfections du visage avec le modèle YOLO (yolo_model.pt).
 
 Usage : python yolo_photo.py [photo.jpg] [--live] [--cam 1] [--conf 0.25] [--model yolo_model.pt]
   comme cnn_photo.py : sans photo, ESPACE prend la photo ; --live = temps réel (+ / - seuil, q quitte).
 
 Le visage est d'abord repéré (MediaPipe) puis découpé avec une marge : YOLO ne voit que le visage, agrandi à
-peu près comme dans les photos d'entraînement (visage plein cadre) -> les boutons gardent la bonne taille.
+peu près comme dans les photos d'entraînement (visage plein cadre) -> les imperfections gardent la bonne taille.
 """
 
 import argparse
@@ -20,8 +20,7 @@ from ultralytics import YOLO
 from cnn_photo import snapshot
 
 MARGIN = 0.15  # marge autour du visage, en fraction de sa taille
-COLORS = {"blackheads": (255, 120, 0), "dark_spot": (0, 200, 255), "nodules": (0, 0, 255),
-          "papules": (255, 0, 200), "pustules": (0, 140, 255), "whiteheads": (255, 255, 0)}
+GREEN = (0, 255, 0)
 
 
 def face_box(landmarker, bgr):
@@ -37,18 +36,17 @@ def face_box(landmarker, bgr):
 
 
 def analyze(bgr, landmarker, model, conf):
-    """Dessine les boutons sur bgr ; renvoie (nombre de boutons, visage trouvé)."""
+    """Dessine les imperfections sur bgr ; renvoie (nombre, visage trouvé)."""
     box = face_box(landmarker, bgr)
     if box is None:
         return 0, False
     x0, y0, x1, y1 = box
-    r = model.predict(bgr[y0:y1, x0:x1], imgsz=640, conf=conf, verbose=False)[0]
+    r = model.predict(bgr[y0:y1, x0:x1], imgsz=1024, conf=conf, verbose=False)[0]
     thick = max(2, bgr.shape[1] // 600)
     cv2.rectangle(bgr, (x0, y0), (x1, y1), (80, 80, 80), 1)
-    for (bx0, by0, bx1, by1), c, k in zip(r.boxes.xyxy.cpu().numpy().astype(int), r.boxes.conf.cpu().numpy(), r.boxes.cls.cpu().numpy().astype(int)):
-        name = r.names[k]
-        cv2.rectangle(bgr, (x0 + bx0, y0 + by0), (x0 + bx1, y0 + by1), COLORS.get(name, (0, 255, 0)), thick)
-        cv2.putText(bgr, f"{name} {c:.0%}", (x0 + bx0, max(y0 + by0 - 5, 14)), cv2.FONT_HERSHEY_SIMPLEX, 0.45, COLORS.get(name, (0, 255, 0)), 1)
+    for (bx0, by0, bx1, by1), c in zip(r.boxes.xyxy.int().tolist(), r.boxes.conf.tolist()):
+        cv2.rectangle(bgr, (x0 + bx0, y0 + by0), (x0 + bx1, y0 + by1), GREEN, thick)
+        cv2.putText(bgr, f"{c:.0%}", (x0 + bx0, max(y0 + by0 - 5, 14)), cv2.FONT_HERSHEY_SIMPLEX, 0.45, GREEN, 1)
     return len(r.boxes), True
 
 
@@ -73,7 +71,7 @@ def main():
         landmarker.close()
         if not found:
             raise SystemExit("Aucun visage détecté : mettez-vous de face, bien éclairé.")
-        print(f"{n} bouton(s) entouré(s) -> resultat.jpg")
+        print(f"{n} imperfection(s) entourée(s) -> resultat.jpg")
         cv2.imwrite("resultat.jpg", img)
         cv2.imshow("Resultat (une touche pour fermer)", img)
         cv2.waitKey(0)
@@ -90,7 +88,7 @@ def main():
                 raise SystemExit("Caméra introuvable : essayez un autre --cam (0, 1, 2…).")
             n, found = analyze(frame, landmarker, model, conf)
             fps, last = 1 / max(time.time() - last, 1e-3), time.time()
-            msg = f"{n} bouton(s)" if found else "aucun visage"
+            msg = f"{n} imperfection(s)" if found else "aucun visage"
             cv2.putText(frame, f"{msg} | seuil {conf:.0%} (+/-) | {fps:.0f} img/s | q = quitter", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
             cv2.imshow("VisuModel YOLO", frame)
             key = cv2.waitKey(1) & 0xFF
