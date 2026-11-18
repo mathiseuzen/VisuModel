@@ -23,6 +23,9 @@ from mediapipe.tasks.python import vision
 
 FACE_MODEL = "face_landmarker.task"
 SEG_MODEL = "selfie_multiclass.tflite"
+# Le maillage s'arrête au milieu du front : on prolonge l'ovale vers le haut de 30 % de la hauteur
+# du visage, puis la segmentation coupe au bord des cheveux.
+FOREHEAD_EXTENSION = 0.3
 FACE_SKIN = 3  # classes : 0 fond, 1 cheveux, 2 peau du corps, 3 peau du visage, 4 vêtements, 5 autres
 CONN = vision.FaceLandmarksConnections
 
@@ -51,16 +54,20 @@ def _region(pts, idx, shape):
 
 
 def skin_mask(bgr, landmarker, segmenter):
-    """Masque uint8 (255 = peau) de la taille de l'image, ou None si aucun visage."""
+    """Renvoie (masque uint8 255 = peau, points du visage en pixels), ou (None, None) si aucun visage."""
     h, w = bgr.shape[:2]
     image = mp.Image(image_format=mp.ImageFormat.SRGB, data=cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB))
     found = landmarker.detect(image)
     if not found.face_landmarks:
-        return None
+        return None, None
     pts = np.array([(p.x * w, p.y * h) for p in found.face_landmarks[0]], np.int32)
 
-    mask = _region(pts, OVAL, (h, w))
-    k = max(3, int((pts[:, 0].max() - pts[:, 0].min()) * 0.02)) | 1  # marge de ~2 % de la largeur du visage
+    face_h = pts[:, 1].max() - pts[:, 1].min()
+    oval = pts[OVAL]
+    upper = oval[oval[:, 1] < pts[:, 1].mean()] - np.array([0, int(FOREHEAD_EXTENSION * face_h)])
+    mask = np.zeros((h, w), np.uint8)
+    cv2.fillConvexPoly(mask, cv2.convexHull(np.vstack([oval, upper]).astype(np.int32)), 255)
+    k =max(3, int((pts[:, 0].max() - pts[:, 0].min()) * 0.02)) | 1  # marge de ~2 % de la largeur du visage
     kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (k, k))
     for idx in EXCLUDED:
         mask[cv2.dilate(_region(pts, idx, (h, w)), kernel) > 0] = 0
@@ -69,7 +76,7 @@ def skin_mask(bgr, landmarker, segmenter):
     if seg.shape != (h, w):
         seg = cv2.resize(seg, (w, h), interpolation=cv2.INTER_NEAREST)
     mask[seg != FACE_SKIN] = 0
-    return cv2.erode(mask, kernel)
+    return cv2.erode(mask, kernel), pts
 
 
 def to_rgba(bgr, mask):
@@ -104,7 +111,7 @@ def main():
     try:
         for path in photos:
             bgr = cv2.imread(path)
-            mask = skin_mask(bgr, landmarker, segmenter)
+            mask, _ = skin_mask(bgr, landmarker, segmenter)
             if mask is None or not mask.any():
                 print(f"Aucun visage/peau trouvé : {path}")
                 continue
